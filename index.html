@@ -419,6 +419,10 @@
   }
   function syncGps() { els.gpsFields.hidden = !els.gpsOn.checked; }
 
+  var ID_STORE = "smarttagqr.androidId";
+  function saveId(v) { try { localStorage.setItem(ID_STORE, v); } catch (e) {} }
+  function loadId() { try { return localStorage.getItem(ID_STORE) || ""; } catch (e) { return ""; } }
+
   function randomAndroidId() {
     var b = new Uint8Array(8);
     (window.crypto || {}).getRandomValues ? crypto.getRandomValues(b)
@@ -453,6 +457,7 @@
   ["androidId", "lt", "st", "of", "lat", "lng"].forEach(function (k) {
     els[k].addEventListener("input", refresh);
   });
+  els.androidId.addEventListener("input", function () { saveId(els.androidId.value.trim()); });
   els.now.addEventListener("click", function () {
     var d = new Date();
     els.lt.value = toLocalInput(d); els.st.value = toLocalInput(d); refresh();
@@ -460,7 +465,7 @@
   els.stOn.addEventListener("change", function () { syncStField(); refresh(); });
   els.gpsOn.addEventListener("change", function () { syncGps(); refresh(); });
   els.geoBtn.addEventListener("click", useLocation);
-  els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); refresh(); });
+  els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); saveId(els.androidId.value); refresh(); });
   els.autoOn.addEventListener("change", setAuto);
   els.decIn.addEventListener("input", runDecoder);
 
@@ -479,7 +484,9 @@
 
   // ---- init ----
   (function init() {
-    els.androidId.value = randomAndroidId();
+    var savedId = loadId();
+    els.androidId.value = savedId || randomAndroidId();
+    saveId(els.androidId.value);
     var now = new Date();
     els.lt.value = toLocalInput(now);
     els.st.value = toLocalInput(now);
