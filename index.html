@@ -1,0 +1,491 @@
+<title>SmartTag QR Generator</title>
+<style>
+  /* Layout: single-column control stack on the left, sticky QR + payload readout on the right; collapses to one column under 760px. */
+  :root {
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --surface-2: #f6f8fa;
+    --ink: #121820;
+    --ink-soft: #566070;
+    --line: #d7dde4;
+    --accent: #0a7d78;
+    --accent-ink: #063f3d;
+    --warn: #b25a00;
+    --danger: #b4291f;
+    --radius: 12px;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1116;
+      --surface: #161c24;
+      --surface-2: #1d242e;
+      --ink: #e7edf3;
+      --ink-soft: #97a3b2;
+      --line: #2a333f;
+      --accent: #37c7bf;
+      --accent-ink: #bdeeeb;
+      --warn: #e2954a;
+      --danger: #ef6a60;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1116;
+    --surface: #161c24;
+    --surface-2: #1d242e;
+    --ink: #e7edf3;
+    --ink-soft: #97a3b2;
+    --line: #2a333f;
+    --accent: #37c7bf;
+    --accent-ink: #bdeeeb;
+    --warn: #e2954a;
+    --danger: #ef6a60;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; }
+  * { box-sizing: border-box; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; }
+
+  header.page { margin-bottom: 24px; }
+  header.page .kicker {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 6px;
+  }
+  header.page h1 { font-size: clamp(22px, 4vw, 30px); font-weight: 600; margin: 0; text-wrap: balance; }
+  header.page p { color: var(--ink-soft); margin: 8px 0 0; max-width: 62ch; font-size: 14px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+
+  .stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .card > h2 {
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft);
+    margin: 0 0 14px; font-weight: 600;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+  .field .hint { font-size: 11.5px; color: var(--ink-soft); }
+
+  input[type="text"], input[type="datetime-local"] {
+    font-family: var(--mono); font-size: 13px; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 10px; width: 100%; min-width: 0;
+  }
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  input:disabled { opacity: 0.5; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > .field { flex: 1 1 140px; margin-bottom: 0; }
+
+  .toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+  .readout {
+    font-family: var(--mono); font-size: 12px; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px;
+    color: var(--accent-ink); word-break: break-all;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .readout { color: var(--accent); } }
+  :root[data-theme="dark"] .readout { color: var(--accent); }
+
+  button.btn {
+    font-family: var(--sans); font-size: 12px; font-weight: 600; cursor: pointer;
+    background: var(--surface-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 11px;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.btn.sm { padding: 4px 8px; font-size: 11px; }
+
+  /* Output column */
+  .out { display: flex; flex-direction: column; gap: 16px; }
+  @media (min-width: 760px) { .out { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); } }
+
+  .qr-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; text-align: center; }
+  .qr-frame { background: #ffffff; border-radius: 8px; padding: 14px; display: inline-block; width: 100%; max-width: 280px; }
+  .qr-frame svg { width: 100%; height: auto; display: block; }
+  .qr-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 10px; }
+
+  .payload { }
+  .payload .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .payload .label-row span { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  .mono-block {
+    font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px; word-break: break-all; white-space: pre-wrap; color: var(--ink);
+    max-height: 120px; overflow-y: auto;
+  }
+  .mono-block .k { color: var(--accent); }
+
+  details.dec { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 18px; }
+  details.dec summary { cursor: pointer; padding: 16px 0; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; list-style: none; }
+  details.dec summary::-webkit-details-marker { display: none; }
+  details.dec summary::before { content: "▸ "; color: var(--accent); }
+  details.dec[open] summary::before { content: "▾ "; }
+  details.dec .body { padding-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
+
+  .note { font-size: 11.5px; color: var(--ink-soft); }
+  .note code { font-family: var(--mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+  .warn-text { color: var(--warn); }
+
+  .geo-status { font-size: 11.5px; min-height: 1.2em; }
+  .geo-status.ok { color: var(--accent); }
+  .geo-status.err { color: var(--warn); }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <p class="kicker">SmartTagQR · reverse-engineered pipeline</p>
+    <h1>SmartTag QR Generator</h1>
+    <p>Reproduces the app's rolling QR: builds the field string, RC4-encrypts it with the app's embedded key, hex-encodes the result and renders it at error-correction level M. Every field is editable — change the Android ID to generate a tag for any device.</p>
+  </header>
+
+  <div class="grid">
+    <div class="stack">
+      <section class="card">
+        <h2>Device</h2>
+        <div class="field">
+          <label for="androidId">Android ID <span class="hint">(Settings.Secure.ANDROID_ID)</span></label>
+          <div class="row" style="align-items:flex-end">
+            <input type="text" id="androidId" spellcheck="false" autocomplete="off" style="flex:1 1 180px">
+            <button class="btn" type="button" id="randBtn">Randomize</button>
+          </div>
+          <span class="hint">Random 16-char hex (64-bit), the Android ID format. Trimmed to the last 16 chars, or left-padded with <code>x</code> to 16.</span>
+        </div>
+        <div class="field">
+          <label>Derived UID</label>
+          <div class="readout" id="uidOut">STAD7dea3a7d7506a2eb</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Time</h2>
+        <div class="field">
+          <label for="ltInput">Local time (LT)</label>
+          <div class="row" style="align-items:flex-end">
+            <input type="datetime-local" id="ltInput" step="1" style="flex:1 1 180px">
+            <button class="btn" type="button" id="nowBtn">Set to now</button>
+          </div>
+          <span class="hint">Formatted <code>yyyyMMddTHH:mm:ss.fff</code>.</span>
+        </div>
+        <div class="field">
+          <label class="toggle"><input type="checkbox" id="stOn" checked> Include synced time (ST)</label>
+          <span class="hint">Off → the payload carries the literal token <code>NST</code> (no synced time).</span>
+        </div>
+        <div class="field" id="stField">
+          <label for="stInput">Synced time (ST)</label>
+          <input type="datetime-local" id="stInput" step="1">
+        </div>
+        <div class="field">
+          <label for="ofInput">UTC offset (OF)</label>
+          <input type="text" id="ofInput" spellcheck="false" autocomplete="off">
+          <span class="hint">App quirk preserved: negative offsets carry no sign.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Location</h2>
+        <div class="field">
+          <label class="toggle"><input type="checkbox" id="gpsOn"> Include location (Lat / Long)</label>
+          <span class="hint">On only when GPS is enabled in the app; rounded to 6 decimals.</span>
+        </div>
+        <div class="field">
+          <button class="btn" type="button" id="geoBtn">Use my phone's location</button>
+          <span class="geo-status" id="geoStatus"></span>
+        </div>
+        <div class="row" id="gpsFields">
+          <div class="field">
+            <label for="latInput">Latitude</label>
+            <input type="text" id="latInput" value="0" spellcheck="false" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="lngInput">Longitude</label>
+            <input type="text" id="lngInput" value="0" spellcheck="false" autocomplete="off">
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Generation</h2>
+        <label class="toggle"><input type="checkbox" id="autoOn"> Auto-refresh every 5 s (mirrors the app loop)</label>
+        <p class="note" style="margin:10px 0 0">When on, LT and ST advance to the current time each tick, exactly as the running app regenerates its QR.</p>
+      </section>
+    </div>
+
+    <div class="out">
+      <div class="qr-card">
+        <div class="qr-frame" id="qrFrame"></div>
+        <div class="qr-meta" id="qrMeta"></div>
+      </div>
+
+      <div class="payload">
+        <div class="label-row"><span>Plaintext payload</span><button class="btn sm" type="button" data-copy="plain">Copy</button></div>
+        <div class="mono-block" id="plainOut"></div>
+      </div>
+
+      <div class="payload">
+        <div class="label-row"><span>Encrypted (QR content)</span><button class="btn sm" type="button" data-copy="cipher">Copy</button></div>
+        <div class="mono-block" id="cipherOut"></div>
+      </div>
+
+      <details class="dec">
+        <summary>Decoder — verify a scanned QR</summary>
+        <div class="body">
+          <p class="note">Paste the hex string scanned from any SmartTag QR to recover the plaintext.</p>
+          <input type="text" id="decIn" placeholder="paste hex…" spellcheck="false" autocomplete="off">
+          <div class="mono-block" id="decOut" style="max-height:160px">—</div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:24px">
+    Key <code>nB]hh;6gqG%%uKIA71H</code> is hard-coded in the app (<code>SmartTagQR.dll</code>), so any tag is reversible with it. RC4 · ASCII bytes · uppercase hex · QRCoder ECC&nbsp;M, 20&nbsp;px/module.
+  </p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var KEY = "nB]hh;6gqG%%uKIA71H";
+
+  // ---- crypto / encoding (faithful to SmartTagQR.Helpers.Utiles) ----
+  function asciiBytes(s) {
+    var b = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff;
+    return b;
+  }
+  function rc4(bytes, keyStr) {
+    var key = asciiBytes(keyStr);
+    var S = new Array(256);
+    for (var i = 0; i < 256; i++) S[i] = i;
+    var j = 0, t;
+    for (i = 0; i < 256; i++) {
+      j = (j + S[i] + key[i % key.length]) % 256;
+      t = S[i]; S[i] = S[j]; S[j] = t;
+    }
+    var out = new Uint8Array(bytes.length);
+    i = 0; j = 0;
+    for (var k = 0; k < bytes.length; k++) {
+      i = (i + 1) % 256;
+      j = (j + S[i]) % 256;
+      t = S[i]; S[i] = S[j]; S[j] = t;
+      out[k] = bytes[k] ^ S[(S[i] + S[j]) % 256];
+    }
+    return out;
+  }
+  function toHex(bytes) {
+    var s = "";
+    for (var i = 0; i < bytes.length; i++) s += ("0" + bytes[i].toString(16)).slice(-2).toUpperCase();
+    return s;
+  }
+  function fromHex(hex) {
+    hex = hex.replace(/[^0-9a-fA-F]/g, "");
+    if (hex.length % 2) hex = hex.slice(0, -1);
+    var b = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < b.length; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return b;
+  }
+  function encrypt(plain) { return toHex(rc4(asciiBytes(plain), KEY)); }
+  function decrypt(hex) {
+    var out = rc4(fromHex(hex), KEY), s = "";
+    for (var i = 0; i < out.length; i++) s += String.fromCharCode(out[i]);
+    return s;
+  }
+
+  // ---- field builders (faithful to UtilesAndroid / GenerarCodigoViewModel) ----
+  function deriveUid(id) {
+    if (id.length === 16) return "STAD" + id;
+    if (id.length < 16) { while (id.length < 16) id = "x" + id; return "STAD" + id; }
+    return "STAD" + id.slice(id.length - 16);
+  }
+  function pad(n, w) { n = "" + n; while (n.length < w) n = "0" + n; return n; }
+  // yyyyMMddTHH:mm:ss.fff from a Date (local components)
+  function fmtTime(d) {
+    return d.getFullYear() + pad(d.getMonth() + 1, 2) + pad(d.getDate(), 2) + "T" +
+      pad(d.getHours(), 2) + ":" + pad(d.getMinutes(), 2) + ":" + pad(d.getSeconds(), 2) +
+      "." + pad(d.getMilliseconds(), 3);
+  }
+  // +HH:mm  (negative offsets carry NO sign — replicating the app)
+  function fmtOffset(d) {
+    var mins = -d.getTimezoneOffset();
+    var sign = mins >= 0 ? "+" : "";
+    var a = Math.abs(mins);
+    return sign + pad(Math.floor(a / 60), 2) + ":" + pad(a % 60, 2);
+  }
+
+  // ---- DOM ----
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    androidId: $("androidId"), uidOut: $("uidOut"), randBtn: $("randBtn"),
+    lt: $("ltInput"), now: $("nowBtn"),
+    stOn: $("stOn"), stField: $("stField"), st: $("stInput"),
+    of: $("ofInput"),
+    gpsOn: $("gpsOn"), gpsFields: $("gpsFields"), lat: $("latInput"), lng: $("lngInput"),
+    geoBtn: $("geoBtn"), geoStatus: $("geoStatus"),
+    autoOn: $("autoOn"),
+    qrFrame: $("qrFrame"), qrMeta: $("qrMeta"),
+    plain: $("plainOut"), cipher: $("cipherOut"),
+    decIn: $("decIn"), decOut: $("decOut")
+  };
+
+  function toLocalInput(d) {
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1, 2) + "-" + pad(d.getDate(), 2) + "T" +
+      pad(d.getHours(), 2) + ":" + pad(d.getMinutes(), 2) + ":" + pad(d.getSeconds(), 2);
+  }
+  function parseLocalInput(v) {
+    // treat the datetime-local value as local wall-clock, ms = 0
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(v || "");
+    if (!m) return new Date();
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0, 0);
+  }
+
+  function escapeHtml(s) { return s.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  function highlightPayload(s) {
+    // bold the KEY= tokens for readability
+    return escapeHtml(s).replace(/(^|&amp;)([A-Za-z]+=)/g, function (_, amp, k) { return amp + '<span class="k">' + k + "</span>"; })
+                        .replace(/(^|&amp;)(NST)(?=&amp;|$)/g, function (_, amp, t) { return amp + '<span class="k">' + t + "</span>"; });
+  }
+
+  function buildPlain() {
+    var uid = deriveUid(els.androidId.value.trim());
+    els.uidOut.textContent = uid;
+
+    var ltDate = els.autoOn.checked ? new Date() : parseLocalInput(els.lt.value);
+    var s = "UID=" + uid + "&";
+    s += "LT=" + fmtTime(ltDate) + "&";
+    if (els.stOn.checked) {
+      var stDate = els.autoOn.checked ? new Date() : parseLocalInput(els.st.value);
+      s += "ST=" + fmtTime(stDate);
+    } else {
+      s += "NST";
+    }
+    s += "&OF=" + els.of.value.trim();
+    if (els.gpsOn.checked) {
+      s += "&Lat=" + els.lat.value.trim() + "&Long=" + els.lng.value.trim();
+    }
+    return s;
+  }
+
+  function renderQR(text) {
+    els.qrFrame.innerHTML = "";
+    try {
+      var qr = qrcode(0, "M");           // auto version, ECC level M
+      qr.addData(text);                   // auto mode (alphanumeric for hex)
+      qr.make();
+      els.qrFrame.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 32, scalable: true });
+      els.qrMeta.textContent = "version " + qr.getModuleCount() + "×" + qr.getModuleCount() + " · ECC M · " + text.length + " chars";
+    } catch (e) {
+      els.qrFrame.innerHTML = '<p style="color:#b4291f;font-size:12px;padding:20px">Payload too large for a single QR.</p>';
+      els.qrMeta.textContent = "";
+    }
+  }
+
+  function refresh() {
+    var plain = buildPlain();
+    var cipher = encrypt(plain);
+    els.plain.innerHTML = highlightPayload(plain);
+    els.cipher.textContent = cipher;
+    renderQR(cipher);
+  }
+
+  function runDecoder() {
+    var v = els.decIn.value.trim();
+    if (!v) { els.decOut.textContent = "—"; return; }
+    try { els.decOut.innerHTML = highlightPayload(decrypt(v)) || "(empty)"; }
+    catch (e) { els.decOut.textContent = "Invalid hex."; }
+  }
+
+  // ---- wiring ----
+  var timer = null;
+  function setAuto() {
+    var on = els.autoOn.checked;
+    els.lt.disabled = on; els.st.disabled = on || !els.stOn.checked; els.now.disabled = on;
+    if (on && !timer) { timer = setInterval(refresh, 5000); }
+    if (!on && timer) { clearInterval(timer); timer = null; }
+    refresh();
+  }
+  function syncStField() {
+    els.stField.hidden = !els.stOn.checked;
+    els.st.disabled = els.autoOn.checked || !els.stOn.checked;
+  }
+  function syncGps() { els.gpsFields.hidden = !els.gpsOn.checked; }
+
+  function randomAndroidId() {
+    var b = new Uint8Array(8);
+    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(b)
+      : b.forEach(function (_, i) { b[i] = Math.floor(Math.random() * 256); });
+    var s = "";
+    for (var i = 0; i < 8; i++) s += ("0" + b[i].toString(16)).slice(-2);
+    return s; // 16 lowercase hex chars = 64-bit, the ANDROID_ID shape
+  }
+
+  function round6(x) { return (Math.round(x * 1e6) / 1e6).toString(); }
+  function setGeo(msg, cls) { els.geoStatus.textContent = msg; els.geoStatus.className = "geo-status" + (cls ? " " + cls : ""); }
+  function useLocation() {
+    if (!navigator.geolocation) { setGeo("This browser has no geolocation API.", "err"); return; }
+    if (!window.isSecureContext) { setGeo("Location needs a secure context — open this page over https.", "err"); return; }
+    setGeo("Locating…", "");
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      els.gpsOn.checked = true; syncGps();
+      els.lat.value = round6(pos.coords.latitude);
+      els.lng.value = round6(pos.coords.longitude);
+      setGeo("Location set (±" + Math.round(pos.coords.accuracy) + " m).", "ok");
+      refresh();
+    }, function (err) {
+      var m;
+      if (err.code === 1) m = "Location permission denied. Allow location for this site in your browser settings.";
+      else if (err.code === 2) m = "Position unavailable — no GPS fix right now.";
+      else if (err.code === 3) m = "Timed out waiting for a fix.";
+      else m = "Could not get location.";
+      setGeo(m, "err");
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+
+  ["androidId", "lt", "st", "of", "lat", "lng"].forEach(function (k) {
+    els[k].addEventListener("input", refresh);
+  });
+  els.now.addEventListener("click", function () {
+    var d = new Date();
+    els.lt.value = toLocalInput(d); els.st.value = toLocalInput(d); refresh();
+  });
+  els.stOn.addEventListener("change", function () { syncStField(); refresh(); });
+  els.gpsOn.addEventListener("change", function () { syncGps(); refresh(); });
+  els.geoBtn.addEventListener("click", useLocation);
+  els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); refresh(); });
+  els.autoOn.addEventListener("change", setAuto);
+  els.decIn.addEventListener("input", runDecoder);
+
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var txt = btn.getAttribute("data-copy") === "plain" ? els.plain.textContent : els.cipher.textContent;
+      var done = function () { var o = btn.textContent; btn.textContent = "Copied"; setTimeout(function () { btn.textContent = o; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done, function () {
+          var r = document.createRange(); r.selectNodeContents(btn.closest(".payload").querySelector(".mono-block"));
+          var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); done();
+        });
+      } else { done(); }
+    });
+  });
+
+  // ---- init ----
+  (function init() {
+    els.androidId.value = randomAndroidId();
+    var now = new Date();
+    els.lt.value = toLocalInput(now);
+    els.st.value = toLocalInput(now);
+    els.of.value = fmtOffset(now);
+    syncStField(); syncGps();
+    refresh();
+  })();
+})();
+</script>
