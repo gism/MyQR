@@ -1,6 +1,6 @@
 # MyQR
 
-A self-contained web tool that reproduces the SmartTagQR app's encrypted rolling QR code.
+A self-contained web tool that reproduces an encrypted rolling QR code.
 
 **Live site: https://gism.github.io/MyQR/**
 
@@ -20,4 +20,4 @@ Open the live site, set the fields you need, and scan or save the generated QR. 
 ## Notes
 
 - All logic runs in the browser; nothing is sent to a server. The remembered Android ID stays in your own browser's storage.
-- This is a testing/demonstration tool for QR codes produced by the SmartTagQR app.
+- This is a testing/demonstration tool for the encrypted QR format.

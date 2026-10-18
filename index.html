@@ -1,4 +1,4 @@
-<title>SmartTag QR Generator</title>
+<title>Encrypted QR Generator</title>
 <style>
   /* Layout: single-column control stack on the left, sticky QR + payload readout on the right; collapses to one column under 760px. */
   :root {
@@ -142,9 +142,9 @@
 
 <div class="wrap">
   <header class="page">
-    <p class="kicker">SmartTagQR · reverse-engineered pipeline</p>
-    <h1>SmartTag QR Generator</h1>
-    <p>Reproduces the app's rolling QR: builds the field string, RC4-encrypts it with the app's embedded key, hex-encodes the result and renders it at error-correction level M. Every field is editable — change the Android ID to generate a tag for any device.</p>
+    <p class="kicker">Encrypted rolling QR · reverse-engineered pipeline</p>
+    <h1>Encrypted QR Generator</h1>
+    <p>Reproduces the rolling QR: builds the field string, RC4-encrypts it with the embedded key, hex-encodes the result and renders it at error-correction level M. Every field is editable — change the Android ID to generate a tag for any device.</p>
   </header>
 
   <div class="grid">
@@ -239,7 +239,7 @@
       <details class="dec">
         <summary>Decoder — verify a scanned QR</summary>
         <div class="body">
-          <p class="note">Paste the hex string scanned from any SmartTag QR to recover the plaintext.</p>
+          <p class="note">Paste the hex string scanned from a generated QR to recover the plaintext.</p>
           <input type="text" id="decIn" placeholder="paste hex…" spellcheck="false" autocomplete="off">
           <div class="mono-block" id="decOut" style="max-height:160px">—</div>
         </div>
@@ -248,7 +248,7 @@
   </div>
 
   <p class="note" style="margin-top:24px">
-    Key <code>nB]hh;6gqG%%uKIA71H</code> is hard-coded in the app (<code>SmartTagQR.dll</code>), so any tag is reversible with it. RC4 · ASCII bytes · uppercase hex · QRCoder ECC&nbsp;M, 20&nbsp;px/module.
+    The encryption key is embedded in the page, so any tag is reversible with it. RC4 · ASCII bytes · uppercase hex · QR ECC&nbsp;M, 20&nbsp;px/module.
   </p>
 </div>
 
@@ -258,7 +258,7 @@
   "use strict";
   var KEY = "nB]hh;6gqG%%uKIA71H";
 
-  // ---- crypto / encoding (faithful to SmartTagQR.Helpers.Utiles) ----
+  // ---- crypto / encoding (faithful to the original app) ----
   function asciiBytes(s) {
     var b = new Uint8Array(s.length);
     for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff;
@@ -420,7 +420,7 @@
   }
   function syncGps() { els.gpsFields.hidden = !els.gpsOn.checked; }
 
-  var ID_STORE = "smarttagqr.androidId";
+  var ID_STORE = "qrgen.androidId";
   function saveId(v) {
     var ok = false;
     try { localStorage.setItem(ID_STORE, v); ok = true; } catch (e) {}
@@ -429,7 +429,7 @@
   }
   function loadId() {
     try { var v = localStorage.getItem(ID_STORE); if (v) return v; } catch (e) {}
-    try { var m = document.cookie.match(/(?:^|;\s*)smarttagqr\.androidId=([^;]*)/); if (m) return decodeURIComponent(m[1]); } catch (e) {}
+    try { var m = document.cookie.match(/(?:^|;\s*)qrgen\.androidId=([^;]*)/); if (m) return decodeURIComponent(m[1]); } catch (e) {}
     return "";
   }
 
