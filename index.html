@@ -158,6 +158,7 @@
             <button class="btn" type="button" id="randBtn">Randomize</button>
           </div>
           <span class="hint">Random 16-char hex (64-bit), the Android ID format. Trimmed to the last 16 chars, or left-padded with <code>x</code> to 16.</span>
+          <span class="geo-status" id="idStatus"></span>
         </div>
         <div class="field">
           <label>Derived UID</label>
@@ -325,7 +326,7 @@
   // ---- DOM ----
   var $ = function (id) { return document.getElementById(id); };
   var els = {
-    androidId: $("androidId"), uidOut: $("uidOut"), randBtn: $("randBtn"),
+    androidId: $("androidId"), uidOut: $("uidOut"), randBtn: $("randBtn"), idStatus: $("idStatus"),
     lt: $("ltInput"), now: $("nowBtn"),
     stOn: $("stOn"), stField: $("stField"), st: $("stInput"),
     of: $("ofInput"),
@@ -420,8 +421,17 @@
   function syncGps() { els.gpsFields.hidden = !els.gpsOn.checked; }
 
   var ID_STORE = "smarttagqr.androidId";
-  function saveId(v) { try { localStorage.setItem(ID_STORE, v); } catch (e) {} }
-  function loadId() { try { return localStorage.getItem(ID_STORE) || ""; } catch (e) { return ""; } }
+  function saveId(v) {
+    var ok = false;
+    try { localStorage.setItem(ID_STORE, v); ok = true; } catch (e) {}
+    try { document.cookie = ID_STORE + "=" + encodeURIComponent(v) + ";max-age=31536000;path=/;SameSite=Lax"; ok = true; } catch (e) {}
+    return ok;
+  }
+  function loadId() {
+    try { var v = localStorage.getItem(ID_STORE); if (v) return v; } catch (e) {}
+    try { var m = document.cookie.match(/(?:^|;\s*)smarttagqr\.androidId=([^;]*)/); if (m) return decodeURIComponent(m[1]); } catch (e) {}
+    return "";
+  }
 
   function randomAndroidId() {
     var b = new Uint8Array(8);
@@ -457,7 +467,11 @@
   ["androidId", "lt", "st", "of", "lat", "lng"].forEach(function (k) {
     els[k].addEventListener("input", refresh);
   });
-  els.androidId.addEventListener("input", function () { saveId(els.androidId.value.trim()); });
+  function showIdStatus(ok, prefix) {
+    if (ok) { els.idStatus.textContent = (prefix || "Saved") + " — remembered on this device."; els.idStatus.className = "geo-status ok"; }
+    else { els.idStatus.textContent = "This browser isn't saving site data (private mode?) — the ID won't persist."; els.idStatus.className = "geo-status err"; }
+  }
+  els.androidId.addEventListener("input", function () { showIdStatus(saveId(els.androidId.value.trim())); });
   els.now.addEventListener("click", function () {
     var d = new Date();
     els.lt.value = toLocalInput(d); els.st.value = toLocalInput(d); refresh();
@@ -465,7 +479,7 @@
   els.stOn.addEventListener("change", function () { syncStField(); refresh(); });
   els.gpsOn.addEventListener("change", function () { syncGps(); refresh(); });
   els.geoBtn.addEventListener("click", useLocation);
-  els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); saveId(els.androidId.value); refresh(); });
+  els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); showIdStatus(saveId(els.androidId.value)); refresh(); });
   els.autoOn.addEventListener("change", setAuto);
   els.decIn.addEventListener("input", runDecoder);
 
@@ -486,7 +500,8 @@
   (function init() {
     var savedId = loadId();
     els.androidId.value = savedId || randomAndroidId();
-    saveId(els.androidId.value);
+    var ok = saveId(els.androidId.value);
+    showIdStatus(ok, savedId ? "Loaded your last ID" : "New random ID");
     var now = new Date();
     els.lt.value = toLocalInput(now);
     els.st.value = toLocalInput(now);
