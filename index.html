@@ -138,6 +138,15 @@
   .geo-status { font-size: 11.5px; min-height: 1.2em; }
   .geo-status.ok { color: var(--accent); }
   .geo-status.err { color: var(--warn); }
+
+  a { color: var(--accent); }
+  details.help { margin-top: 2px; }
+  details.help summary { cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--accent); list-style: none; }
+  details.help summary::-webkit-details-marker { display: none; }
+  details.help summary::before { content: "▸ "; }
+  details.help[open] summary::before { content: "▾ "; }
+  details.help .body { padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  details.help ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
 </style>
 
 <div class="wrap">
@@ -159,6 +168,19 @@
           </div>
           <span class="hint">Random 16-char hex (64-bit), the Android ID format. Trimmed to the last 16 chars, or left-padded with <code>x</code> to 16.</span>
           <span class="geo-status" id="idStatus"></span>
+          <details class="help">
+            <summary>How do I get my Android ID?</summary>
+            <div class="body">
+              <p class="note"><strong>Exact match (recommended).</strong> This gives the ID the original app actually uses:</p>
+              <ol class="note">
+                <li>Open the original app and let it display its QR.</li>
+                <li>Scan that QR with any scanner (or screenshot it) to get the hex string.</li>
+                <li>Paste the hex into the <strong>Decoder</strong> lower on this page.</li>
+                <li>The <code>UID=STAD…</code> it shows contains your Android ID — copy the part after <code>STAD</code> into the box above.</li>
+              </ol>
+              <p class="note"><strong>Quick option.</strong> Install a free <a href="https://play.google.com/store/apps/details?id=com.evozi.deviceid" target="_blank" rel="noopener">Device ID app</a> and copy its “Android ID”. Since Android 8 this value is per-app, so it may <em>not</em> match the original app's QR — use the exact-match steps if the generated code must be accepted by the same system.</p>
+            </div>
+          </details>
         </div>
         <div class="field">
           <label>Derived UID</label>
