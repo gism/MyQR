@@ -147,6 +147,10 @@
   details.help[open] summary::before { content: "▾ "; }
   details.help .body { padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
   details.help ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+
+  .dec-id { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .dec-id code { font-family: var(--mono); color: var(--accent); word-break: break-all; }
 </style>
 
 <div class="wrap">
@@ -168,19 +172,6 @@
           </div>
           <span class="hint">Random 16-char hex (64-bit), the Android ID format. Trimmed to the last 16 chars, or left-padded with <code>x</code> to 16.</span>
           <span class="geo-status" id="idStatus"></span>
-          <details class="help">
-            <summary>How do I get my Android ID?</summary>
-            <div class="body">
-              <p class="note"><strong>Exact match (recommended).</strong> This gives the ID the original app actually uses:</p>
-              <ol class="note">
-                <li>Open the original app and let it display its QR.</li>
-                <li>Scan that QR with any scanner (or screenshot it) to get the hex string.</li>
-                <li>Paste the hex into the <strong>Decoder</strong> lower on this page.</li>
-                <li>The <code>UID=STAD…</code> it shows contains your Android ID — copy the part after <code>STAD</code> into the box above.</li>
-              </ol>
-              <p class="note"><strong>Quick option.</strong> Install a free <a href="https://play.google.com/store/apps/details?id=com.evozi.deviceid" target="_blank" rel="noopener">Device ID app</a> and copy its “Android ID”. Since Android 8 this value is per-app, so it may <em>not</em> match the original app's QR — use the exact-match steps if the generated code must be accepted by the same system.</p>
-            </div>
-          </details>
         </div>
         <div class="field">
           <label>Derived UID</label>
@@ -215,9 +206,10 @@
 
       <section class="card">
         <h2>Location</h2>
+        <p class="note" style="margin:0 0 12px">By default the app does <strong>not</strong> include location in the QR — it's added only when GPS is switched on in the app's settings. Leave this off to match the default behaviour.</p>
         <div class="field">
           <label class="toggle"><input type="checkbox" id="gpsOn"> Include location (Lat / Long)</label>
-          <span class="hint">On only when GPS is enabled in the app; rounded to 6 decimals.</span>
+          <span class="hint">When on, coordinates are rounded to 6 decimals, as the app does.</span>
         </div>
         <div class="field">
           <button class="btn" type="button" id="geoBtn">Use my phone's location</button>
@@ -237,7 +229,7 @@
 
       <section class="card">
         <h2>Generation</h2>
-        <label class="toggle"><input type="checkbox" id="autoOn"> Auto-refresh every 5 s (mirrors the app loop)</label>
+        <label class="toggle"><input type="checkbox" id="autoOn" checked> Auto-refresh every 5 s (mirrors the app loop)</label>
         <p class="note" style="margin:10px 0 0">When on, LT and ST advance to the current time each tick, exactly as the running app regenerates its QR.</p>
       </section>
     </div>
@@ -259,10 +251,18 @@
       </div>
 
       <details class="dec">
-        <summary>Decoder — verify a scanned QR</summary>
+        <summary>Decoder — read a QR / get its Android ID</summary>
         <div class="body">
-          <p class="note">Paste the hex string scanned from a generated QR to recover the plaintext.</p>
-          <input type="text" id="decIn" placeholder="paste hex…" spellcheck="false" autocomplete="off">
+          <p class="note">Take a photo of a QR (or pick an image) to read it automatically, or paste its hex string. Then the plaintext and Android ID are recovered.</p>
+          <div class="row" style="align-items:center">
+            <label class="btn" style="align-self:flex-start">Scan / take photo<input type="file" id="decFile" accept="image/*" hidden></label>
+            <span class="geo-status" id="decScanStatus"></span>
+          </div>
+          <input type="text" id="decIn" placeholder="…or paste hex" spellcheck="false" autocomplete="off">
+          <div class="dec-id" id="decIdRow" hidden>
+            <span>Android ID:&nbsp; <code id="decId"></code></span>
+            <button class="btn sm" type="button" id="useDecId">Use this ID</button>
+          </div>
           <div class="mono-block" id="decOut" style="max-height:160px">—</div>
         </div>
       </details>
@@ -275,6 +275,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -357,7 +358,9 @@
     autoOn: $("autoOn"),
     qrFrame: $("qrFrame"), qrMeta: $("qrMeta"),
     plain: $("plainOut"), cipher: $("cipherOut"),
-    decIn: $("decIn"), decOut: $("decOut")
+    decIn: $("decIn"), decOut: $("decOut"),
+    decIdRow: $("decIdRow"), decId: $("decId"), useDecId: $("useDecId"),
+    decFile: $("decFile"), decScanStatus: $("decScanStatus")
   };
 
   function toLocalInput(d) {
@@ -420,21 +423,38 @@
     renderQR(cipher);
   }
 
+  var decExtractedId = "";
   function runDecoder() {
     var v = els.decIn.value.trim();
-    if (!v) { els.decOut.textContent = "—"; return; }
-    try { els.decOut.innerHTML = highlightPayload(decrypt(v)) || "(empty)"; }
-    catch (e) { els.decOut.textContent = "Invalid hex."; }
+    if (!v) { els.decOut.textContent = "—"; els.decIdRow.hidden = true; decExtractedId = ""; return; }
+    var plain;
+    try { plain = decrypt(v); } catch (e) { els.decOut.textContent = "Invalid hex."; els.decIdRow.hidden = true; return; }
+    els.decOut.innerHTML = highlightPayload(plain) || "(empty)";
+    // extract the Android ID: UID=STAD<id> up to the next & or end
+    var m = /UID=STAD([^&]*)/.exec(plain);
+    if (m && m[1]) {
+      decExtractedId = m[1];
+      els.decId.textContent = decExtractedId;
+      els.decIdRow.hidden = false;
+    } else {
+      els.decIdRow.hidden = true; decExtractedId = "";
+    }
   }
 
   // ---- wiring ----
   var timer = null;
+  function tickNow() {
+    var d = new Date();
+    els.lt.value = toLocalInput(d);
+    els.st.value = toLocalInput(d);
+    refresh();
+  }
   function setAuto() {
     var on = els.autoOn.checked;
     els.lt.disabled = on; els.st.disabled = on || !els.stOn.checked; els.now.disabled = on;
-    if (on && !timer) { timer = setInterval(refresh, 5000); }
+    if (on && !timer) { timer = setInterval(tickNow, 5000); }
     if (!on && timer) { clearInterval(timer); timer = null; }
-    refresh();
+    if (on) tickNow(); else refresh();
   }
   function syncStField() {
     els.stField.hidden = !els.stOn.checked;
@@ -503,7 +523,43 @@
   els.geoBtn.addEventListener("click", useLocation);
   els.randBtn.addEventListener("click", function () { els.androidId.value = randomAndroidId(); showIdStatus(saveId(els.androidId.value)); refresh(); });
   els.autoOn.addEventListener("change", setAuto);
+  function setDecStatus(msg, cls) { els.decScanStatus.textContent = msg; els.decScanStatus.className = "geo-status" + (cls ? " " + cls : ""); }
+  function readQrFromImage(file) {
+    if (!file) return;
+    if (typeof jsQR !== "function") { setDecStatus("Scanner failed to load — paste the hex instead.", "err"); return; }
+    setDecStatus("Reading image…", "");
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      var maxDim = 1400;
+      var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      var w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+      var canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      var code;
+      try { code = jsQR(ctx.getImageData(0, 0, w, h).data, w, h); } catch (e) { code = null; }
+      if (code && code.data) {
+        els.decIn.value = code.data.trim();
+        setDecStatus("QR read.", "ok");
+        runDecoder();
+      } else {
+        setDecStatus("No QR found. Fill the frame with the code and try again.", "err");
+      }
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); setDecStatus("Could not open that image.", "err"); };
+    img.src = url;
+  }
+  els.decFile.addEventListener("change", function (e) { readQrFromImage(e.target.files && e.target.files[0]); e.target.value = ""; });
   els.decIn.addEventListener("input", runDecoder);
+  els.useDecId.addEventListener("click", function () {
+    if (!decExtractedId) return;
+    els.androidId.value = decExtractedId;
+    showIdStatus(saveId(decExtractedId), "Saved");
+    refresh();
+  });
 
   document.querySelectorAll("[data-copy]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -529,7 +585,7 @@
     els.st.value = toLocalInput(now);
     els.of.value = fmtOffset(now);
     syncStField(); syncGps();
-    refresh();
+    setAuto();
   })();
 })();
 </script>
